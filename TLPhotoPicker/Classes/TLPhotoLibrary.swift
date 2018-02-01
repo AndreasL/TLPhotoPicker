@@ -128,6 +128,14 @@ extension TLPhotoLibrary {
         return options
     }
     
+    func getLimitedOption() -> PHFetchOptions {
+        let options = PHFetchOptions()
+        let sortOrder = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.sortDescriptors = sortOrder
+        options.fetchLimit = 1
+        return options
+    }
+    
     func predicate(for collection: TLAssetsCollection?) -> NSPredicate? {
         guard let phAssetCollection = collection?.phAssetCollection else { return nil }
         guard let configure = configure else {return nil}
@@ -169,6 +177,7 @@ extension TLPhotoLibrary {
         let mediaType = configure.mediaType
         let maxVideoDuration = configure.maxVideoDuration
         let options = configure.fetchOption ?? getOption()
+        let albumOptions = getLimitedOption()
         
         @discardableResult
         func getAlbum(subType: PHAssetCollectionSubtype, result: inout [TLAssetsCollection]) {
@@ -183,7 +192,7 @@ extension TLPhotoLibrary {
             for collection in collections {
                 if !result.contains(where: { $0.localIdentifier == collection.localIdentifier }) {
                     var assetsCollection = TLAssetsCollection(collection: collection)
-                    assetsCollection.fetchResult = PHAsset.fetchAssets(in: collection, options: options)
+                    assetsCollection.fetchResult = PHAsset.fetchAssets(in: collection, options: albumOptions)
                     if assetsCollection.count > 0 {
                         result.append(assetsCollection)
                     }
@@ -197,10 +206,19 @@ extension TLPhotoLibrary {
             if let collection = fetchCollection.firstObject, !result.contains(where: { $0.localIdentifier == collection.localIdentifier }) {
                 var assetsCollection = TLAssetsCollection(collection: collection)
                 options.predicate = self.predicate(for: assetsCollection)
-                assetsCollection.fetchResult = PHAsset.fetchAssets(in: collection, options: options)
-                if assetsCollection.count > 0 || useCameraButton {
-                    result.append(assetsCollection)
-                    return assetsCollection
+                
+                if (subType == .smartAlbumUserLibrary) {
+                    assetsCollection.fetchResult = PHAsset.fetchAssets(in: collection, options: options)
+                    if assetsCollection.count > 0 || useCameraButton {
+                    	result.append(assetsCollection)
+                    	return assetsCollection
+                    }
+                } else {
+                    assetsCollection.fetchResult = PHAsset.fetchAssets(in: collection, options: albumOptions)
+                    if assetsCollection.count > 0 || useCameraButton {
+                    	result.append(assetsCollection)
+                    	return assetsCollection
+                    }
                 }
             }
             return nil
@@ -218,6 +236,7 @@ extension TLPhotoLibrary {
                     self?.delegate?.loadCameraRollCollection(collection: cameraRoll)
                 }
             }
+            
             //Selfies
             getSmartAlbum(subType: .smartAlbumSelfPortraits, result: &assetCollections)
             //Panoramas
@@ -230,13 +249,14 @@ extension TLPhotoLibrary {
                 //Videos
                 getSmartAlbum(subType: .smartAlbumVideos, result: &assetCollections)
             }
+ 
             //Album
             let albumsResult = PHCollectionList.fetchTopLevelUserCollections(with: nil)
             albumsResult.enumerateObjects({ (collection, index, stop) -> Void in
                 guard let collection = collection as? PHAssetCollection else { return }
                 var assetsCollection = TLAssetsCollection(collection: collection)
                 options.predicate = self?.predicate(for: assetsCollection)
-                assetsCollection.fetchResult = PHAsset.fetchAssets(in: collection, options: options)
+                assetsCollection.fetchResult = PHAsset.fetchAssets(in: collection, options: albumOptions)
                 if assetsCollection.count > 0, !assetCollections.contains(where: { $0.localIdentifier == collection.localIdentifier }) {
                     assetCollections.append(assetsCollection)
                 }

@@ -269,7 +269,9 @@ extension TLPhotosPickerViewController {
     
     fileprivate func reloadCollectionView() {
         guard self.focusedCollection != nil else { return }
+		UIView.setAnimationsEnabled(false)
         self.collectionView.reloadData()
+        UIView.setAnimationsEnabled(true)
     }
     
     fileprivate func reloadTableView() {
@@ -309,15 +311,22 @@ extension TLPhotosPickerViewController {
             cancelAllImageAssets()
         }
         resetRequest()
-        self.collections[getfocusedIndex()].recentPosition = self.collectionView.contentOffset
-        var reloadIndexPaths = [IndexPath(row: getfocusedIndex(), section: 0)]
-        self.focusedCollection = collection
-        self.focusedCollection?.fetchResult = self.photoLibrary.fetchResult(collection: collection, maxVideoDuration:self.configure.maxVideoDuration, options: self.configure.fetchOption)
-        reloadIndexPaths.append(IndexPath(row: getfocusedIndex(), section: 0))
-        self.albumPopView.tableView.reloadRows(at: reloadIndexPaths, with: .none)
         self.albumPopView.show(false, duration: 0.2)
+        self.albumPopView.tableView.reloadData()
+        self.collections[getfocusedIndex()].recentPosition = self.collectionView.contentOffset
+        self.focusedCollection = collection
+        if collection.phAssetCollection?.assetCollectionSubtype == .smartAlbumUserLibrary {
+            self.focusedCollection?.fetchResult = self.photoLibrary.fetchResult(collection: collection, maxVideoDuration:self.configure.maxVideoDuration, options: self.configure.fetchOption)
+            self.reloadCollectionView()
+        } else {
+            DispatchQueue.global(qos: DispatchQoS.background.qosClass).async {
+                self.focusedCollection?.fetchResult = self.photoLibrary.fetchResult(collection: collection, maxVideoDuration:self.configure.maxVideoDuration, options: self.configure.fetchOption)
+                DispatchQueue.main.async {
+                    self.reloadCollectionView()
+                }
+            }
+        }
         self.updateTitle()
-        self.reloadCollectionView()
         self.collectionView.contentOffset = collection.recentPosition
     }
     
@@ -874,7 +883,11 @@ extension TLPhotosPickerViewController: UITableViewDelegate,UITableViewDataSourc
         let collection = self.collections[indexPath.row]
         cell.thumbImageView.image = collection.thumbnail
         cell.titleLabel.text = collection.title
-        cell.subTitleLabel.text = "\(collection.fetchResult?.count ?? 0)"
+        if collection.phAssetCollection?.assetCollectionType == .smartAlbum {
+        	cell.subTitleLabel.text = nil
+        } else {
+            cell.subTitleLabel.text = "\(collection.phAssetCollection?.estimatedAssetCount ?? 0)"
+        }
         if let phAsset = collection.getAsset(at: collection.useCameraButton ? 1 : 0), collection.thumbnail == nil {
             let scale = UIScreen.main.scale
             let size = CGSize(width: 80*scale, height: 80*scale)
